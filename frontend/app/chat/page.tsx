@@ -69,6 +69,11 @@ interface InputBoxProps {
   handleKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   sendMessage: (text?: string) => void;
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
+  selectedDoc: string | null;
+  attachedFile: File | null;
+  onAttach: (file: File) => void;
+  onRemoveAttach: () => void;
+  isUploading: boolean;
 }
 
 function InputBox({
@@ -78,29 +83,114 @@ function InputBox({
   handleKeyDown,
   sendMessage,
   textareaRef,
+  selectedDoc,
+  attachedFile,
+  onAttach,
+  onRemoveAttach,
+  isUploading,
 }: InputBoxProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const canSend = input.trim() || attachedFile;
+
   return (
-    <div className={`flex items-end gap-3 rounded-2xl px-4 py-3 bg-white transition-all duration-200 border ${bottomMode ? "border-gray-200 shadow-sm focus-within:border-indigo-300 focus-within:shadow-md" : "border-gray-200 shadow-md focus-within:border-indigo-400 focus-within:shadow-lg"}`}>
-      <textarea
-        ref={textareaRef}
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder={bottomMode ? "Ask a follow-up..." : "Ask anything about your mortgage..."}
-        rows={1}
-        className="flex-1 resize-none bg-transparent text-sm text-gray-700 placeholder-gray-400 outline-none leading-relaxed"
-        style={{ maxHeight: "160px" }}
-      />
-      <button
-        onClick={() => sendMessage()}
-        disabled={!input.trim()}
-        aria-label="Send"
-        className={`size-9 rounded-xl flex items-center justify-center shrink-0 transition-all duration-200 ${input.trim() ? "bg-indigo-500 text-white hover:bg-indigo-600 hover:scale-105 cursor-pointer shadow-sm" : "bg-gray-100 text-gray-300 cursor-not-allowed"}`}
-      >
-        <svg className="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
-        </svg>
-      </button>
+    <div className={`rounded-2xl bg-white transition-all duration-200 border ${
+      bottomMode
+        ? "border-gray-200 shadow-sm focus-within:border-indigo-300 focus-within:shadow-md"
+        : "border-gray-200 shadow-md focus-within:border-indigo-400 focus-within:shadow-lg"
+    }`}>
+      {/* Attached file chip */}
+      {attachedFile && (
+        <div className="flex items-center gap-2 px-4 pt-3">
+          <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 rounded-xl px-3 py-1.5 max-w-xs">
+            <svg className="size-4 text-indigo-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <span className="text-xs text-indigo-700 font-medium truncate max-w-[160px]">{attachedFile.name}</span>
+            <span className="text-[10px] text-indigo-400 shrink-0">
+              {(attachedFile.size / 1024).toFixed(0)}KB
+            </span>
+            <button
+              onClick={onRemoveAttach}
+              className="text-indigo-400 hover:text-indigo-600 transition ml-0.5 shrink-0"
+              aria-label="Remove attachment"
+            >
+              <svg className="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          {isUploading && (
+            <span className="text-xs text-indigo-500 flex items-center gap-1">
+              <svg className="animate-spin size-3" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              Indexing...
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Input row */}
+      <div className="flex items-end gap-2 px-3 py-3">
+        {/* + Attach button */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) onAttach(file);
+            e.target.value = "";
+          }}
+        />
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          aria-label="Attach PDF"
+          title="Attach PDF"
+          className="size-8 rounded-xl flex items-center justify-center shrink-0 text-gray-400 hover:text-indigo-500 hover:bg-indigo-50 transition cursor-pointer"
+        >
+          <svg className="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+          </svg>
+        </button>
+
+        <textarea
+          ref={textareaRef}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={
+            attachedFile
+              ? "Add a message about this document..."
+              : selectedDoc
+              ? `Ask about "${selectedDoc}"...`
+              : bottomMode
+              ? "Ask a follow-up..."
+              : "Ask anything about your mortgage..."
+          }
+          rows={1}
+          className="flex-1 resize-none bg-transparent text-sm text-gray-700 placeholder-gray-400 outline-none leading-relaxed py-1"
+          style={{ maxHeight: "160px" }}
+        />
+
+        {/* Send button */}
+        <button
+          onClick={() => sendMessage()}
+          disabled={!canSend || isUploading}
+          aria-label="Send"
+          className={`size-9 rounded-xl flex items-center justify-center shrink-0 transition-all duration-200 ${
+            canSend && !isUploading
+              ? "bg-indigo-500 text-white hover:bg-indigo-600 hover:scale-105 cursor-pointer shadow-sm"
+              : "bg-gray-100 text-gray-300 cursor-not-allowed"
+          }`}
+        >
+          <svg className="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+          </svg>
+        </button>
+      </div>
     </div>
   );
 }
@@ -110,6 +200,10 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [documents, setDocuments] = useState<{ name: string }[]>([]);
+  const [selectedDoc, setSelectedDoc] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const hasMessages = messages.length > 0;
@@ -125,19 +219,144 @@ export default function ChatPage() {
     ta.style.height = Math.min(ta.scrollHeight, 160) + "px";
   }, [input]);
 
-  function sendMessage(text?: string) {
+  useEffect(() => {
+    fetchDocuments();
+  }, []);
+
+  async function fetchDocuments() {
+    try {
+      const res = await fetch("http://localhost:8000/documents");
+      if (res.ok) {
+        const data = await res.json();
+        setDocuments(data);
+      }
+    } catch (err) {
+      console.error("Error fetching documents:", err);
+    }
+  }
+
+  async function handleFileUpload(file: File): Promise<string | null> {
+    setIsUploading(true);
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await fetch("http://localhost:8000/upload", {
+        method: "POST",
+        body: formData,
+      });
+      if (res.ok) {
+        await fetchDocuments();
+        return file.name;
+      } else {
+        const errData = await res.json();
+        alert(errData.detail || "Failed to upload document");
+        return null;
+      }
+    } catch (err) {
+      console.error("Error uploading file:", err);
+      alert("Failed to connect to the backend server.");
+      return null;
+    } finally {
+      setIsUploading(false);
+    }
+  }
+
+  async function handleDeleteDocument(filename: string) {
+    if (!confirm(`Are you sure you want to delete ${filename}?`)) return;
+
+    try {
+      const res = await fetch(`http://localhost:8000/documents/${filename}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        if (selectedDoc === filename) {
+          setSelectedDoc(null);
+        }
+        await fetchDocuments();
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            role: "assistant",
+            content: `Deleted document **${filename}** from database.`,
+            timestamp: new Date(),
+          },
+        ]);
+      } else {
+        const errData = await res.json();
+        alert(errData.detail || "Failed to delete document");
+      }
+    } catch (err) {
+      console.error("Error deleting document:", err);
+      alert("Failed to connect to the backend server.");
+    }
+  }
+
+  async function sendMessage(text?: string) {
     const content = (text ?? input).trim();
-    if (!content) return;
+    if (!content && !attachedFile) return;
+
+    // If a file is attached, upload it first then ask about it
+    let uploadedDocName: string | null = selectedDoc;
+    if (attachedFile) {
+      const fileName = await handleFileUpload(attachedFile);
+      setAttachedFile(null);
+      if (fileName) {
+        uploadedDocName = fileName;
+        setSelectedDoc(fileName);
+        // Show a confirmation message in chat
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            role: "assistant",
+            content: `Uploaded and indexed **${fileName}**. ${content ? "Asking your question now..." : "You can now ask questions about it!"}`,
+            timestamp: new Date(),
+          },
+        ]);
+      } else {
+        return; // upload failed, bail
+      }
+      if (!content) return; // no message to send, just uploaded
+    }
+
     setMessages((prev) => [...prev, { id: Date.now().toString(), role: "user", content, timestamp: new Date() }]);
     setInput("");
     setIsTyping(true);
-    setTimeout(() => {
+
+    try {
+      const res = await fetch("http://localhost:8000/ask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: content,
+          document_name: uploadedDocName,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setMessages((prev) => [
+          ...prev,
+          { id: (Date.now() + 1).toString(), role: "assistant", content: data.answer, timestamp: new Date() },
+        ]);
+      } else {
+        const errData = await res.json();
+        setMessages((prev) => [
+          ...prev,
+          { id: (Date.now() + 1).toString(), role: "assistant", content: `Error: ${errData.detail || "Failed to get answer from server."}`, timestamp: new Date() },
+        ]);
+      }
+    } catch (err) {
+      console.error("Error asking question:", err);
       setMessages((prev) => [
         ...prev,
-        { id: (Date.now() + 1).toString(), role: "assistant", content: getMockResponse(content), timestamp: new Date() },
+        { id: (Date.now() + 1).toString(), role: "assistant", content: "Failed to connect to the backend RAG server. Please verify the backend is running.", timestamp: new Date() },
       ]);
+    } finally {
       setIsTyping(false);
-    }, 1000 + Math.random() * 700);
+    }
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -190,7 +409,7 @@ export default function ChatPage() {
           </div>
 
           {/* Search */}
-          <div className="px-3 mb-5 shrink-0">
+          <div className="px-3 mb-2 shrink-0">
             <button 
               className={`w-full flex items-center rounded-lg hover:bg-gray-100 transition cursor-pointer text-gray-500 text-sm py-2 ${sidebarOpen ? "px-3 gap-2.5 justify-start" : "justify-center"}`}
               title="Search chats"
@@ -202,8 +421,9 @@ export default function ChatPage() {
             </button>
           </div>
 
+
           {/* Recents */}
-          <div className="flex-1 overflow-y-auto px-3 min-h-0">
+          <div className="max-h-[30%] overflow-y-auto px-3 min-h-0 mb-4 shrink-0">
             {sidebarOpen && <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest px-2 mb-2">Recents</p>}
             {recentChats.map((chat, i) => (
               <button 
@@ -223,18 +443,20 @@ export default function ChatPage() {
             ))}
           </div>
 
-          <div className="mx-4 border-t border-gray-100 shrink-0" />
-
-          {/* User */}
-          <div className="p-4 shrink-0">
-            <div className={`flex items-center rounded-lg hover:bg-gray-100 cursor-pointer transition group ${sidebarOpen ? "px-2 py-2 gap-3" : "justify-center py-2"}`}>
-              <div className="size-8 rounded-full bg-indigo-500 flex items-center justify-center text-[10px] font-bold text-white shrink-0">EA</div>
-              {sidebarOpen && (
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-gray-700 truncate">Emmanuel Addo</p>
-                  <p className="text-xs text-gray-400">Free plan</p>
-                </div>
-              )}
+          <div className="mt-auto">
+            <div className="mx-4 border-t border-gray-100 shrink-0" />
+            {/* User */}
+            <div className="p-4 shrink-0">
+              <div className={`flex items-center rounded-lg hover:bg-gray-100 cursor-pointer transition group ${sidebarOpen ? "px-2 py-2 gap-3" : "justify-center py-2"}`}>
+                <div className="size-8 rounded-full bg-indigo-500 flex items-center justify-center text-[10px] font-bold text-white shrink-0">EA</div>
+                {sidebarOpen && (
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-gray-700 truncate">Emmanuel Addo</p>
+                    <p className="text-xs text-gray-400">Free plan</p>
+                    <p className="text-xs text-gray-500 mt-1">emmanuel.addo@example.com</p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </aside>
@@ -246,12 +468,37 @@ export default function ChatPage() {
           {!sidebarOpen && (
             <button
               onClick={() => setSidebarOpen(true)}
-              className="absolute top-5 left-5 z-20 size-8 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition cursor-pointer"
+              className="absolute top-4 left-5 z-20 size-8 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition cursor-pointer"
             >
               <svg className="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
+          )}
+
+          {/* Header Top Bar */}
+          {(selectedDoc || !sidebarOpen) && (
+            <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4 shrink-0 bg-white min-h-[65px]">
+              <div className="flex items-center gap-2">
+                {!sidebarOpen && <div className="w-8" />} 
+                {selectedDoc && (
+                  <h2 className="text-sm font-semibold text-gray-800">
+                    <span className="flex items-center gap-2">
+                      <span className="inline-block size-2 rounded-full bg-indigo-500" />
+                      Querying: <span className="text-indigo-600 font-mono text-xs">{selectedDoc}</span>
+                    </span>
+                  </h2>
+                )}
+              </div>
+              {selectedDoc && (
+                <button
+                  onClick={() => setSelectedDoc(null)}
+                  className="text-xs text-indigo-600 hover:text-indigo-800 font-medium transition cursor-pointer"
+                >
+                  Clear filter
+                </button>
+              )}
+            </div>
           )}
 
           {/* ── EMPTY STATE ── */}
@@ -269,6 +516,11 @@ export default function ChatPage() {
                   handleKeyDown={handleKeyDown}
                   sendMessage={sendMessage}
                   textareaRef={textareaRef}
+                  selectedDoc={selectedDoc}
+                  attachedFile={attachedFile}
+                  onAttach={setAttachedFile}
+                  onRemoveAttach={() => setAttachedFile(null)}
+                  isUploading={isUploading}
                 />
               </div>
 
@@ -343,6 +595,11 @@ export default function ChatPage() {
                     handleKeyDown={handleKeyDown}
                     sendMessage={sendMessage}
                     textareaRef={textareaRef}
+                    selectedDoc={selectedDoc}
+                    attachedFile={attachedFile}
+                    onAttach={setAttachedFile}
+                    onRemoveAttach={() => setAttachedFile(null)}
+                    isUploading={isUploading}
                   />
                   <p className="text-center text-[10px] text-gray-300 mt-3">
                     Always verify mortgage advice with a licensed professional.
