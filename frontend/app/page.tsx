@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import FeatureSection from "../components/featureSection";
 
 const suggestedQuestions: string[] = [
   "What are the mortgage loan requirements?",
@@ -31,16 +30,20 @@ export default function HomePage() {
   };
 
   return (
-  <section className="bg-white min-h-screen">
-    <main
-      className="flex items-center flex-col justify-between bg-cover text-sm text-gray-800 max-md:px-4 text-center min-h-screen"
-    >
-      {/* Navbar */}
-      <nav className="flex items-center justify-between w-full md:px-16 lg:px-24 xl:px-32 py-4">
-        {/* Logo */}
-        <a href="/" className="flex items-center gap-2 text-gray-800 font-bold text-xl">
-          MortgageAI
-        </a>
+    <section className="bg-gray-900 min-h-screen">
+  <main
+    className="flex items-center flex-col justify-between bg-cover text-sm text-white max-md:px-4 text-center min-h-screen"
+        style={{
+          backgroundImage:
+            "url('https://raw.githubusercontent.com/prebuiltui/prebuiltui/main/assets/hero/bg-gradient-2.png')",
+        }}
+      >
+        {/* Navbar */}
+        <nav className="flex items-center justify-between w-full md:px-16 lg:px-24 xl:px-32 py-4">
+          {/* Logo */}
+          <a href="/" className="flex items-center gap-2 text-white font-bold text-xl">
+            🏠 MortgageAI
+          </a>
 
           {/* Desktop Menu */}
           <div
@@ -159,9 +162,6 @@ export default function HomePage() {
           <a href="#" className="underline hover:text-white transition">Privacy Policy</a>.
         </p>
       </main>
-
-      {/* feature section */}
-      <FeatureSection />  
     </section>
   );
 }

@@ -62,6 +62,49 @@ function renderContent(text: string) {
   });
 }
 
+interface InputBoxProps {
+  bottomMode: boolean;
+  input: string;
+  setInput: (value: string) => void;
+  handleKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
+  sendMessage: (text?: string) => void;
+  textareaRef: React.RefObject<HTMLTextAreaElement | null>;
+}
+
+function InputBox({
+  bottomMode,
+  input,
+  setInput,
+  handleKeyDown,
+  sendMessage,
+  textareaRef,
+}: InputBoxProps) {
+  return (
+    <div className={`flex items-end gap-3 rounded-2xl px-4 py-3 bg-white transition-all duration-200 border ${bottomMode ? "border-gray-200 shadow-sm focus-within:border-indigo-300 focus-within:shadow-md" : "border-gray-200 shadow-md focus-within:border-indigo-400 focus-within:shadow-lg"}`}>
+      <textarea
+        ref={textareaRef}
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder={bottomMode ? "Ask a follow-up..." : "Ask anything about your mortgage..."}
+        rows={1}
+        className="flex-1 resize-none bg-transparent text-sm text-gray-700 placeholder-gray-400 outline-none leading-relaxed"
+        style={{ maxHeight: "160px" }}
+      />
+      <button
+        onClick={() => sendMessage()}
+        disabled={!input.trim()}
+        aria-label="Send"
+        className={`size-9 rounded-xl flex items-center justify-center shrink-0 transition-all duration-200 ${input.trim() ? "bg-indigo-500 text-white hover:bg-indigo-600 hover:scale-105 cursor-pointer shadow-sm" : "bg-gray-100 text-gray-300 cursor-not-allowed"}`}
+      >
+        <svg className="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -101,30 +144,7 @@ export default function ChatPage() {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   }
 
-  const InputBox = ({ bottomMode }: { bottomMode: boolean }) => (
-    <div className={`flex items-end gap-3 rounded-2xl px-4 py-3 bg-white transition-all duration-200 border ${bottomMode ? "border-gray-200 shadow-sm focus-within:border-indigo-300 focus-within:shadow-md" : "border-gray-200 shadow-md focus-within:border-indigo-400 focus-within:shadow-lg"}`}>
-      <textarea
-        ref={textareaRef}
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder={bottomMode ? "Ask a follow-up..." : "Ask anything about your mortgage..."}
-        rows={1}
-        className="flex-1 resize-none bg-transparent text-sm text-gray-700 placeholder-gray-400 outline-none leading-relaxed"
-        style={{ maxHeight: "160px" }}
-      />
-      <button
-        onClick={() => sendMessage()}
-        disabled={!input.trim()}
-        aria-label="Send"
-        className={`size-9 rounded-xl flex items-center justify-center shrink-0 transition-all duration-200 ${input.trim() ? "bg-indigo-500 text-white hover:bg-indigo-600 hover:scale-105 cursor-pointer shadow-sm" : "bg-gray-100 text-gray-300 cursor-not-allowed"}`}
-      >
-        <svg className="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-          <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
-        </svg>
-      </button>
-    </div>
-  );
+
 
   return (
     /* Outer bg with space on all sides */
@@ -242,7 +262,14 @@ export default function ChatPage() {
               </h1>
 
               <div className="w-full max-w-xl mb-5">
-                <InputBox bottomMode={false} />
+                <InputBox
+                  bottomMode={false}
+                  input={input}
+                  setInput={setInput}
+                  handleKeyDown={handleKeyDown}
+                  sendMessage={sendMessage}
+                  textareaRef={textareaRef}
+                />
               </div>
 
               <div className="flex flex-wrap gap-2 justify-center w-full max-w-xl">
@@ -309,7 +336,14 @@ export default function ChatPage() {
               {/* Bottom input */}
               <div className="bg-white border-t border-gray-100 px-6 py-5 shrink-0">
                 <div className="max-w-2xl mx-auto">
-                  <InputBox bottomMode={true} />
+                  <InputBox
+                    bottomMode={true}
+                    input={input}
+                    setInput={setInput}
+                    handleKeyDown={handleKeyDown}
+                    sendMessage={sendMessage}
+                    textareaRef={textareaRef}
+                  />
                   <p className="text-center text-[10px] text-gray-300 mt-3">
                     Always verify mortgage advice with a licensed professional.
                   </p>
