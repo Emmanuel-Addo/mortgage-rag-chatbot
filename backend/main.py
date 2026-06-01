@@ -1,10 +1,17 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List
 import os
 import shutil
 from rag import add_document, ask_question, get_all_documents, delete_document
+from security import (
+    ask_limiter,
+    upload_limiter,
+    general_limiter,
+    sanitize_filename,
+    verify_pdf_magic_bytes
+)
 
 app = FastAPI(
     title="MortgageAI API",
@@ -15,7 +22,15 @@ app = FastAPI(
 # Allow Next.js frontend to talk to this API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "https://your-vercel-app.vercel.app"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3001",
+        "http://localhost:3002",
+        "http://127.0.0.1:3002",
+        "https://your-vercel-app.vercel.app"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -28,7 +43,7 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 # ---- Request/Response Models ----
 
 class QuestionRequest(BaseModel):
-    question: str
+    question: str = Field(..., max_length=1000, description="The user's question, max 1000 characters.")
     document_name: str | None = None
 
 
@@ -40,7 +55,8 @@ class QuestionResponse(BaseModel):
 # ---- Health Check ----
 
 @app.get("/")
-def health_check():
+def health_check(request: Request):
+    general_limiter.check(request)
     return {
         "status": "running",
         "message": "MortgageAI API is live"
@@ -50,17 +66,27 @@ def health_check():
 # ---- Upload Document ----
 
 @app.post("/upload", response_model=dict)
-async def upload_document(file: UploadFile = File(...)):
+async def upload_document(request: Request, file: UploadFile = File(...)):
     """Upload and index a mortgage PDF document"""
+    upload_limiter.check(request)
 
-    # Validate file type
-    if not file.filename.endswith(".pdf"):
+    # Sanitize the filename to prevent path traversal / directory escaping
+    try:
+        safe_filename = sanitize_filename(file.filename)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
+
+    # Validate file type extension
+    if not safe_filename.endswith(".pdf"):
         raise HTTPException(
             status_code=400,
             detail="Only PDF files are allowed"
         )
 
-    # Validate file size (max 10MB)
+    # Read content to validate size and magic bytes
     contents = await file.read()
     if len(contents) > 10 * 1024 * 1024:
         raise HTTPException(
@@ -68,22 +94,30 @@ async def upload_document(file: UploadFile = File(...)):
             detail="File size must be less than 10MB"
         )
 
+    # Verify that the file header corresponds to an actual PDF (magic bytes check)
+    if not verify_pdf_magic_bytes(contents):
+        raise HTTPException(
+            status_code=400,
+            detail="Security Verification Failed: The uploaded file is not a valid PDF document."
+        )
+
     # Save file to disk
-    file_path = os.path.join(UPLOAD_DIR, file.filename)
+    file_path = os.path.join(UPLOAD_DIR, safe_filename)
     with open(file_path, "wb") as f:
         f.write(contents)
 
     # Add to ChromaDB vector store
     try:
-        num_chunks = add_document(file_path, file.filename)
+        num_chunks = add_document(file_path, safe_filename)
         return {
             "success": True,
-            "message": f"{file.filename} uploaded and indexed successfully",
+            "message": f"{safe_filename} uploaded and indexed successfully",
             "chunks_indexed": num_chunks,
-            "filename": file.filename
+            "filename": safe_filename
         }
     except Exception as e:
-        os.remove(file_path)
+        if os.path.exists(file_path):
+            os.remove(file_path)
         raise HTTPException(
             status_code=500,
             detail=f"Failed to index document: {str(e)}"
@@ -93,17 +127,31 @@ async def upload_document(file: UploadFile = File(...)):
 # ---- Ask Question ----
 
 @app.post("/ask", response_model=QuestionResponse)
-async def ask(request: QuestionRequest):
+async def ask(request: Request, payload: QuestionRequest):
     """Ask a question about the uploaded mortgage documents"""
+    ask_limiter.check(request)
 
-    if not request.question.strip():
+    print(f"🔍 Received question: '{payload.question}' for document: '{payload.document_name}'")
+
+    if not payload.question.strip():
         raise HTTPException(
             status_code=400,
             detail="Question cannot be empty"
         )
 
+    # Sanitize document name if provided
+    safe_doc_name = None
+    if payload.document_name:
+        try:
+            safe_doc_name = sanitize_filename(payload.document_name)
+        except Exception:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid document name"
+            )
+
     try:
-        result = ask_question(request.question, request.document_name)
+        result = ask_question(payload.question, safe_doc_name)
         return QuestionResponse(
             answer=result["answer"],
             sources=result["sources"]
@@ -118,8 +166,9 @@ async def ask(request: QuestionRequest):
 # ---- Get All Documents ----
 
 @app.get("/documents", response_model=List[dict])
-def get_documents():
+def get_documents(request: Request):
     """Get list of all uploaded documents"""
+    general_limiter.check(request)
     try:
         documents = get_all_documents()
         return documents
@@ -133,23 +182,32 @@ def get_documents():
 # ---- Delete Document ----
 
 @app.delete("/documents/{filename}")
-def remove_document(filename: str):
+def remove_document(filename: str, request: Request):
     """Delete a document from the system"""
+    general_limiter.check(request)
 
-    file_path = os.path.join(UPLOAD_DIR, filename)
+    try:
+        safe_filename = sanitize_filename(filename)
+    except Exception:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid filename"
+        )
+
+    file_path = os.path.join(UPLOAD_DIR, safe_filename)
 
     if not os.path.exists(file_path):
         raise HTTPException(
             status_code=404,
-            detail=f"{filename} not found"
+            detail=f"{safe_filename} not found"
         )
 
     try:
-        delete_document(filename)
+        delete_document(safe_filename)
         os.remove(file_path)
         return {
             "success": True,
-            "message": f"{filename} deleted successfully"
+            "message": f"{safe_filename} deleted successfully"
         }
     except Exception as e:
         raise HTTPException(

@@ -16,6 +16,9 @@ if api_key:
     # Set GOOGLE_API_KEY in environment for langchain / google SDK internal usage
     os.environ["GOOGLE_API_KEY"] = api_key
     genai.configure(api_key=api_key)
+    print(f"✅ Gemini API key loaded: {api_key[:8]}...{api_key[-4:]}")
+else:
+    print("⚠️  WARNING: No Gemini API key found in environment. Set GEMINI_API_KEY in .env")
 
 gemini_model = genai.GenerativeModel("gemini-2.5-flash")
 
@@ -115,10 +118,26 @@ QUESTION: {question}
 ANSWER:"""
 
     # 6. Call Gemini API
-    response = gemini_model.generate_content(prompt)
+    try:
+        response = gemini_model.generate_content(prompt)
+        answer = response.text
+    except Exception as e:
+        error_str = str(e)
+        if "API key" in error_str or "403" in error_str or "leaked" in error_str:
+            raise Exception(
+                "Gemini API key is invalid or has been reported as leaked. "
+                "Please generate a new key at https://aistudio.google.com/app/apikey "
+                "and update your backend/.env file."
+            )
+        elif "quota" in error_str.lower() or "429" in error_str:
+            raise Exception(
+                "Gemini API quota exceeded. Please wait a moment and try again."
+            )
+        else:
+            raise Exception(f"Gemini API error: {error_str}")
 
     return {
-        "answer": response.text,
+        "answer": answer,
         "sources": sources
     }
 

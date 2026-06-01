@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { sharedState } from "../utils/sharedState";
 
 interface Message {
   id: string;
@@ -9,15 +10,7 @@ interface Message {
   timestamp: Date;
 }
 
-const recentChats = [
-  "What is the current mortgage rate?",
-  "Fixed vs adjustable rate mortgages",
-  "How much down payment do I need?",
-  "Pre-approval process explained",
-  "Debt-to-income ratio guidelines",
-  "Closing costs breakdown",
-  "FHA loan requirements",
-];
+const generateId = () => Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
 
 const suggestions = [
   "Compare fixed vs adjustable rates",
@@ -70,6 +63,7 @@ interface InputBoxProps {
   sendMessage: (text?: string) => void;
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
   selectedDoc: string | null;
+  setSelectedDoc: (value: string | null) => void;
   attachedFile: File | null;
   onAttach: (file: File) => void;
   onRemoveAttach: () => void;
@@ -84,6 +78,7 @@ function InputBox({
   sendMessage,
   textareaRef,
   selectedDoc,
+  setSelectedDoc,
   attachedFile,
   onAttach,
   onRemoveAttach,
@@ -98,6 +93,29 @@ function InputBox({
         ? "border-gray-200 shadow-sm focus-within:border-indigo-300 focus-within:shadow-md"
         : "border-gray-200 shadow-md focus-within:border-indigo-400 focus-within:shadow-lg"
     }`}>
+      {/* Selected document chip */}
+      {selectedDoc && !attachedFile && (
+        <div className="flex items-center gap-2 px-4 pt-3 shrink-0">
+          <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 rounded-xl px-3 py-1.5 max-w-xs">
+            <svg className="size-4 text-indigo-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <span className="text-xs text-indigo-700 font-medium truncate max-w-[160px]" title={selectedDoc}>
+              Querying: {selectedDoc}
+            </span>
+            <button
+              onClick={() => setSelectedDoc(null)}
+              className="text-indigo-400 hover:text-indigo-600 transition ml-0.5 shrink-0 cursor-pointer"
+              aria-label="Remove active document"
+            >
+              <svg className="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Attached file chip */}
       {attachedFile && (
         <div className="flex items-center gap-2 px-4 pt-3">
@@ -204,6 +222,7 @@ export default function ChatPage() {
   const [selectedDoc, setSelectedDoc] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
+  const [recentChats, setRecentChats] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const hasMessages = messages.length > 0;
@@ -223,9 +242,40 @@ export default function ChatPage() {
     fetchDocuments();
   }, []);
 
+  // Handle shared state from homepage navigation
+  useEffect(() => {
+    const initQuest = sharedState.initialQuestion;
+    const initFile = sharedState.initialFile;
+
+    // Clear sharedState immediately to prevent running multiple times
+    sharedState.initialQuestion = undefined;
+    sharedState.initialFile = null;
+
+    if (initQuest || initFile) {
+      if (initFile) {
+        setAttachedFile(initFile);
+      }
+      if (initQuest) {
+        setInput(initQuest);
+      }
+      sendMessage(initQuest || "", initFile);
+    }
+  }, []);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("mortgage_recent_chats");
+    if (saved) {
+      try {
+        setRecentChats(JSON.parse(saved));
+      } catch (e) {
+        console.error("Failed to parse recent chats", e);
+      }
+    }
+  }, []);
+
   async function fetchDocuments() {
     try {
-      const res = await fetch("http://localhost:8000/documents");
+      const res = await fetch("http://127.0.0.1:8000/documents");
       if (res.ok) {
         const data = await res.json();
         setDocuments(data);
@@ -241,7 +291,7 @@ export default function ChatPage() {
     formData.append("file", file);
 
     try {
-      const res = await fetch("http://localhost:8000/upload", {
+      const res = await fetch("http://127.0.0.1:8000/upload", {
         method: "POST",
         body: formData,
       });
@@ -266,7 +316,7 @@ export default function ChatPage() {
     if (!confirm(`Are you sure you want to delete ${filename}?`)) return;
 
     try {
-      const res = await fetch(`http://localhost:8000/documents/${filename}`, {
+      const res = await fetch(`http://127.0.0.1:8000/documents/${filename}`, {
         method: "DELETE",
       });
       if (res.ok) {
@@ -277,7 +327,7 @@ export default function ChatPage() {
         setMessages((prev) => [
           ...prev,
           {
-            id: Date.now().toString(),
+            id: generateId(),
             role: "assistant",
             content: `Deleted document **${filename}** from database.`,
             timestamp: new Date(),
@@ -293,14 +343,15 @@ export default function ChatPage() {
     }
   }
 
-  async function sendMessage(text?: string) {
+  async function sendMessage(text?: string, fileToUpload?: File | null) {
     const content = (text ?? input).trim();
-    if (!content && !attachedFile) return;
+    const file = fileToUpload !== undefined ? fileToUpload : attachedFile;
+    if (!content && !file) return;
 
     // If a file is attached, upload it first then ask about it
     let uploadedDocName: string | null = selectedDoc;
-    if (attachedFile) {
-      const fileName = await handleFileUpload(attachedFile);
+    if (file) {
+      const fileName = await handleFileUpload(file);
       setAttachedFile(null);
       if (fileName) {
         uploadedDocName = fileName;
@@ -309,7 +360,7 @@ export default function ChatPage() {
         setMessages((prev) => [
           ...prev,
           {
-            id: Date.now().toString(),
+            id: generateId(),
             role: "assistant",
             content: `Uploaded and indexed **${fileName}**. ${content ? "Asking your question now..." : "You can now ask questions about it!"}`,
             timestamp: new Date(),
@@ -321,12 +372,20 @@ export default function ChatPage() {
       if (!content) return; // no message to send, just uploaded
     }
 
-    setMessages((prev) => [...prev, { id: Date.now().toString(), role: "user", content, timestamp: new Date() }]);
+    setMessages((prev) => [...prev, { id: generateId(), role: "user", content, timestamp: new Date() }]);
     setInput("");
     setIsTyping(true);
 
+    // Save to recent chats
+    setRecentChats((prev) => {
+      const filtered = prev.filter((item) => item !== content);
+      const updated = [content, ...filtered].slice(0, 15);
+      localStorage.setItem("mortgage_recent_chats", JSON.stringify(updated));
+      return updated;
+    });
+
     try {
-      const res = await fetch("http://localhost:8000/ask", {
+      const res = await fetch("http://127.0.0.1:8000/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -339,20 +398,20 @@ export default function ChatPage() {
         const data = await res.json();
         setMessages((prev) => [
           ...prev,
-          { id: (Date.now() + 1).toString(), role: "assistant", content: data.answer, timestamp: new Date() },
+          { id: generateId(), role: "assistant", content: data.answer, timestamp: new Date() },
         ]);
       } else {
         const errData = await res.json();
         setMessages((prev) => [
           ...prev,
-          { id: (Date.now() + 1).toString(), role: "assistant", content: `Error: ${errData.detail || "Failed to get answer from server."}`, timestamp: new Date() },
+          { id: generateId(), role: "assistant", content: `Error: ${errData.detail || "Failed to get answer from server."}`, timestamp: new Date() },
         ]);
       }
     } catch (err) {
       console.error("Error asking question:", err);
       setMessages((prev) => [
         ...prev,
-        { id: (Date.now() + 1).toString(), role: "assistant", content: "Failed to connect to the backend RAG server. Please verify the backend is running.", timestamp: new Date() },
+        { id: generateId(), role: "assistant", content: "Failed to connect to the backend RAG server. Please verify the backend is running.", timestamp: new Date() },
       ]);
     } finally {
       setIsTyping(false);
@@ -397,7 +456,10 @@ export default function ChatPage() {
           {/* New chat */}
           <div className="px-3 mb-2 shrink-0">
             <button 
-              onClick={() => setMessages([])} 
+              onClick={() => {
+                setMessages([]);
+                setSelectedDoc(null);
+              }} 
               className={`w-full flex items-center rounded-lg hover:bg-gray-100 transition cursor-pointer font-medium text-gray-600 text-sm py-2 ${sidebarOpen ? "px-3 gap-2.5 justify-start" : "justify-center"}`}
               title="New chat"
             >
@@ -422,25 +484,107 @@ export default function ChatPage() {
           </div>
 
 
-          {/* Recents */}
-          <div className="max-h-[30%] overflow-y-auto px-3 min-h-0 mb-4 shrink-0">
-            {sidebarOpen && <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest px-2 mb-2">Recents</p>}
-            {recentChats.map((chat, i) => (
-              <button 
-                key={i} 
-                onClick={() => sendMessage(chat)} 
-                className={`w-full flex items-center text-left text-sm text-gray-500 rounded-lg hover:bg-gray-100 hover:text-gray-800 transition cursor-pointer truncate mb-0.5 py-2 ${sidebarOpen ? "px-3" : "justify-center"}`}
-                title={chat}
-              >
-                {sidebarOpen ? (
-                  <span className="truncate">{chat}</span>
-                ) : (
-                  <svg className="size-4 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                  </svg>
-                )}
-              </button>
-            ))}
+          {/* Scrollable Sidebar Content */}
+          <div className="flex-1 overflow-y-auto px-3 min-h-0 space-y-6 mb-4">
+            
+            {/* Recents */}
+            <div className="flex flex-col">
+              {sidebarOpen && (
+                <div className="flex items-center justify-between px-2 mb-2 shrink-0">
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Recents</p>
+                  {recentChats.length > 0 && (
+                    <button 
+                      onClick={() => {
+                        setRecentChats([]);
+                        localStorage.removeItem("mortgage_recent_chats");
+                      }}
+                      className="text-[10px] text-gray-400 hover:text-indigo-500 font-medium transition cursor-pointer"
+                    >
+                      Clear all
+                    </button>
+                  )}
+                </div>
+              )}
+              {recentChats.length === 0 ? (
+                sidebarOpen && (
+                  <div className="px-3 py-2 text-xs text-gray-400 italic text-center shrink-0">
+                    No recent questions
+                  </div>
+                )
+              ) : (
+                recentChats.map((chat, i) => (
+                  <button 
+                    key={chat + i} 
+                    onClick={() => sendMessage(chat)} 
+                    className={`w-full flex items-center text-left text-sm text-gray-500 rounded-lg hover:bg-gray-100 hover:text-gray-800 transition cursor-pointer truncate mb-0.5 py-2 ${sidebarOpen ? "px-3" : "justify-center"}`}
+                    title={chat}
+                  >
+                    {sidebarOpen ? (
+                      <span className="truncate">{chat}</span>
+                    ) : (
+                      <svg className="size-4 text-gray-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                      </svg>
+                    )}
+                  </button>
+                ))
+              )}
+            </div>
+
+            {/* Documents */}
+            <div className="flex flex-col border-t border-gray-100 pt-4">
+              {sidebarOpen && (
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest px-2 mb-2 shrink-0">
+                  Documents ({documents.length})
+                </p>
+              )}
+              {documents.length === 0 ? (
+                sidebarOpen && (
+                  <p className="text-xs text-gray-400 italic px-2 py-2 shrink-0">No documents indexed</p>
+                )
+              ) : (
+                documents.map((doc) => {
+                  const isActive = selectedDoc === doc.name;
+                  return (
+                    <div 
+                      key={doc.name} 
+                      className={`group w-full flex items-center justify-between rounded-lg transition truncate mb-0.5 py-1 px-2 ${
+                        isActive 
+                          ? "bg-indigo-50 text-indigo-700" 
+                          : "text-gray-500 hover:bg-gray-100 hover:text-gray-800"
+                      }`}
+                    >
+                      <button
+                        onClick={() => setSelectedDoc(isActive ? null : doc.name)}
+                        className="flex-1 flex items-center text-left text-sm truncate gap-2 cursor-pointer"
+                        title={doc.name}
+                      >
+                        <svg className={`size-4 shrink-0 ${isActive ? "text-indigo-500" : "text-gray-400"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        {sidebarOpen && <span className="truncate">{doc.name}</span>}
+                      </button>
+                      
+                      {sidebarOpen && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteDocument(doc.name);
+                          }}
+                          className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 p-1 rounded transition cursor-pointer"
+                          title="Delete document"
+                        >
+                          <svg className="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
           </div>
 
           <div className="mt-auto">
@@ -517,6 +661,7 @@ export default function ChatPage() {
                   sendMessage={sendMessage}
                   textareaRef={textareaRef}
                   selectedDoc={selectedDoc}
+                  setSelectedDoc={setSelectedDoc}
                   attachedFile={attachedFile}
                   onAttach={setAttachedFile}
                   onRemoveAttach={() => setAttachedFile(null)}
@@ -596,6 +741,7 @@ export default function ChatPage() {
                     sendMessage={sendMessage}
                     textareaRef={textareaRef}
                     selectedDoc={selectedDoc}
+                    setSelectedDoc={setSelectedDoc}
                     attachedFile={attachedFile}
                     onAttach={setAttachedFile}
                     onRemoveAttach={() => setAttachedFile(null)}

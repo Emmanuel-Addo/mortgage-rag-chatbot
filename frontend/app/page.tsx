@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { sharedState } from "./utils/sharedState";
 
 const suggestedQuestions: string[] = [
   "What are the mortgage loan requirements?",
@@ -13,12 +14,13 @@ const suggestedQuestions: string[] = [
 
 export default function HomePage() {
   const [question, setQuestion] = useState<string>("");
-  const [menuOpen, setMenuOpen] = useState<boolean>(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
   const handleSubmit = () => {
     if (question.trim()) {
-      router.push(`/chat?q=${encodeURIComponent(question)}`);
+      sharedState.initialQuestion = question.trim();
+      router.push("/chat");
     }
   };
 
@@ -29,10 +31,34 @@ export default function HomePage() {
     }
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      sharedState.initialFile = file;
+      if (question.trim()) {
+        sharedState.initialQuestion = question.trim();
+      }
+      router.push("/chat");
+    }
+  };
+
+  const handleSuggestedClick = (q: string) => {
+    sharedState.initialQuestion = q;
+    router.push("/chat");
+  };
+
   return (
     <section className="bg-gray-900 min-h-screen">
-  <main
-    className="flex items-center flex-col justify-between bg-cover text-sm text-white max-md:px-4 text-center min-h-screen"
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf"
+        className="hidden"
+        onChange={handleFileChange}
+      />
+      <main
+        className="flex items-center flex-col justify-between bg-cover text-sm text-white max-md:px-4 text-center min-h-screen"
         style={{
           backgroundImage:
             "url('https://raw.githubusercontent.com/prebuiltui/prebuiltui/main/assets/hero/bg-gradient-2.png')",
@@ -42,55 +68,15 @@ export default function HomePage() {
         <nav className="flex items-center justify-between w-full md:px-16 lg:px-24 xl:px-32 py-4">
           {/* Logo */}
           <a href="/" className="flex items-center gap-2 text-white font-bold text-xl">
-            🏠 MortgageAI
+            MortgageAI
           </a>
 
-          {/* Desktop Menu */}
-          <div
-            className={`
-              max-md:absolute max-md:bg-black/50 max-md:h-[785px] 
-              max-md:overflow-hidden max-md:transition-[width] max-md:duration-300 
-              max-md:top-0 max-md:left-0 max-md:flex-col max-md:justify-center 
-              max-md:text-lg max-md:backdrop-blur flex items-center gap-8 font-medium
-              ${menuOpen ? "max-md:w-full" : "max-md:w-0"}
-            `}
-          >
-            <a href="#" className="hover:text-gray-300 transition">Home</a>
-            <a href="#features" className="hover:text-gray-300 transition">Features</a>
-            <a href="#" className="hover:text-gray-300 transition">Pricing</a>
-            <a href="#" className="hover:text-gray-300 transition">Docs</a>
-
-            {/* Close button (mobile) */}
-            <button
-              aria-label="close menu"
-              className="size-6 md:hidden"
-              onClick={() => setMenuOpen(false)}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-                fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M18 6 6 18M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-
-          {/* Get Started Button (desktop) */}
+          {/* Get Started Button */}
           <button
             onClick={() => router.push("/chat")}
-            className="max-md:hidden px-6 py-2 bg-white text-black hover:bg-gray-200 transition active:scale-95 rounded-full border border-gray-600"
+            className="px-6 py-2 bg-white text-black hover:bg-gray-200 transition active:scale-95 rounded-full border border-gray-600 font-medium"
           >
             Get Started
-          </button>
-
-          {/* Burger Menu (mobile) */}
-          <button
-            aria-label="open menu"
-            className="size-6 md:hidden"
-            onClick={() => setMenuOpen(true)}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-              fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 12h18M3 18h18M3 6h18" />
-            </svg>
           </button>
         </nav>
 
@@ -116,9 +102,9 @@ export default function HomePage() {
             <div className="flex items-center justify-between pb-3 px-3">
               {/* Upload button */}
               <button
-                className="flex items-center justify-center bg-gray-500 p-1 rounded-full size-6 hover:bg-gray-400 transition"
+                className="flex items-center justify-center bg-gray-500 p-1 rounded-full size-6 hover:bg-gray-400 transition cursor-pointer"
                 aria-label="Upload document"
-                onClick={() => router.push("/chat")}
+                onClick={() => fileInputRef.current?.click()}
               >
                 <svg width="11" height="11" viewBox="0 0 11 11" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <path d="M1 5.5h9M5.5 1v9" stroke="#CCD5E2" strokeLinecap="round" strokeLinejoin="round" />
@@ -127,7 +113,7 @@ export default function HomePage() {
 
               {/* Send button */}
               <button
-                className="flex items-center justify-center p-1 rounded size-6 bg-indigo-600 hover:bg-indigo-500 transition active:scale-95"
+                className="flex items-center justify-center p-1 rounded size-6 bg-indigo-600 hover:bg-indigo-500 transition active:scale-95 cursor-pointer"
                 aria-label="Send"
                 onClick={handleSubmit}
               >
@@ -144,7 +130,7 @@ export default function HomePage() {
               <div key={index}>
                 <p
                   className="cursor-pointer hover:text-white transition"
-                  onClick={() => setQuestion(q)}
+                  onClick={() => handleSuggestedClick(q)}
                 >
                   {q}
                 </p>
