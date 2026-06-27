@@ -1,9 +1,9 @@
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.vectorstores import Chroma
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_chroma import Chroma
 from typing import Optional
-import google.generativeai as genai
+from google import genai
 import os
 from dotenv import load_dotenv
 
@@ -15,16 +15,16 @@ api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
 if api_key:
     # Set GOOGLE_API_KEY in environment for langchain / google SDK internal usage
     os.environ["GOOGLE_API_KEY"] = api_key
-    genai.configure(api_key=api_key)
-    print(f"✅ Gemini API key loaded: {api_key[:8]}...{api_key[-4:]}")
+    genai_client = genai.Client(api_key=api_key)
+    print(f"Gemini API key loaded: {api_key[:8]}...{api_key[-4:]}")
 else:
-    print("⚠️  WARNING: No Gemini API key found in environment. Set GEMINI_API_KEY in .env")
-
-gemini_model = genai.GenerativeModel("gemini-2.5-flash")
+    print("WARNING: No Gemini API key found in environment. Set GEMINI_API_KEY in .env")
+    genai_client = None
 
 # Free HuggingFace embeddings — no API key needed
 embeddings = HuggingFaceEmbeddings(
-    model_name="sentence-transformers/all-MiniLM-L6-v2"
+    model_name="sentence-transformers/all-MiniLM-L6-v2",
+    model_kwargs={"local_files_only": True}
 )
 
 # ChromaDB — stores your document chunks locally
@@ -60,9 +60,8 @@ def add_document(file_path: str, filename: str) -> int:
 
     # 4. Store in ChromaDB
     vector_store.add_documents(chunks)
-    vector_store.persist()
 
-    print(f"✅ Indexed {len(chunks)} chunks from {filename}")
+    print(f"Indexed {len(chunks)} chunks from {filename}")
     return len(chunks)
 
 
@@ -119,7 +118,10 @@ ANSWER:"""
 
     # 6. Call Gemini API
     try:
-        response = gemini_model.generate_content(prompt)
+        response = genai_client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt
+        )
         answer = response.text
     except Exception as e:
         error_str = str(e)
@@ -181,8 +183,7 @@ def delete_document(filename: str):
 
         if ids_to_delete:
             vector_store.delete(ids=ids_to_delete)
-            vector_store.persist()
-            print(f"🗑️ Deleted {len(ids_to_delete)} chunks for {filename}")
+            print(f"Deleted {len(ids_to_delete)} chunks for {filename}")
 
     except Exception as e:
         print(f"Error deleting document: {e}")
