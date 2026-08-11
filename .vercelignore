@@ -1,0 +1,12 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+backend/chroma_db/
+backend/documents/
+backend/.venv/
+backend/__pycache__/
+frontend/
+node_modules/
+.git/
+*.md
