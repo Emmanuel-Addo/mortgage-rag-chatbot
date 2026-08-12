@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { sharedState } from "../utils/sharedState";
 
 interface Message {
   id: string;
@@ -242,26 +241,6 @@ export default function ChatPage() {
     fetchDocuments();
   }, []);
 
-  // Handle shared state from homepage navigation
-  useEffect(() => {
-    const initQuest = sharedState.initialQuestion;
-    const initFile = sharedState.initialFile;
-
-    // Clear sharedState immediately to prevent running multiple times
-    sharedState.initialQuestion = undefined;
-    sharedState.initialFile = null;
-
-    if (initQuest || initFile) {
-      if (initFile) {
-        setAttachedFile(initFile);
-      }
-      if (initQuest) {
-        setInput(initQuest);
-      }
-      sendMessage(initQuest || "", initFile);
-    }
-  }, []);
-
   useEffect(() => {
     const saved = localStorage.getItem("mortgage_recent_chats");
     if (saved) {
@@ -275,7 +254,7 @@ export default function ChatPage() {
 
   async function fetchDocuments() {
     try {
-      const res = await fetch("http://127.0.0.1:8000/documents");
+      const res = await fetch("/api/documents");
       if (res.ok) {
         const data = await res.json();
         setDocuments(data);
@@ -291,7 +270,7 @@ export default function ChatPage() {
     formData.append("file", file);
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/upload", {
+      const res = await fetch("/api/upload", {
         method: "POST",
         body: formData,
       });
@@ -316,7 +295,7 @@ export default function ChatPage() {
     if (!confirm(`Are you sure you want to delete ${filename}?`)) return;
 
     try {
-      const res = await fetch(`http://127.0.0.1:8000/documents/${filename}`, {
+      const res = await fetch(`/api/documents/${filename}`, {
         method: "DELETE",
       });
       if (res.ok) {
@@ -385,7 +364,7 @@ export default function ChatPage() {
     });
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/ask", {
+      const res = await fetch("/api/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
